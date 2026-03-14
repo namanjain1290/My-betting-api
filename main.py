@@ -12,50 +12,51 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# User ka data (Ye server chalne tak save rahega)
-user_data = {"balance": 5000.0}
+user_data = {"balance": 5000.0, "active_bets": []}
 
 class BetRequest(BaseModel):
     match_id: int
-    team_selected: int
+    market_type: str # 'bookmaker' ya 'fancy'
+    selection: str
     amount: float
+    odds: float
 
 @app.get("/matches")
 def get_matches():
-    # Har baar naye scores aur odds generate honge (Asli feel ke liye)
-    live_matches = [
-        {
-            "id": 1, 
-            "t1": "India", "t2": "Pakistan", 
-            "score": f"{random.randint(120, 180)}/{random.randint(1, 6)}",
-            "overs": f"{random.randint(15, 19)}.{random.randint(1, 5)}",
-            "o1": round(random.uniform(1.2, 2.5), 2), 
-            "o2": round(random.uniform(2.6, 4.5), 2), 
-            "status": "Live"
-        },
-        {
-            "id": 2, 
-            "t1": "Australia", "t2": "England", 
-            "score": "0/0", "overs": "0.0",
-            "o1": 1.9, "o2": 1.9, 
-            "status": "Upcoming"
-        }
-    ]
-    return {"matches": live_matches, "balance": user_data["balance"]}
+    # Asli Lotus365 jaisa data structure
+    return {
+        "balance": user_data["balance"],
+        "active_bets": user_data["active_bets"],
+        "matches": [
+            {
+                "id": 1, "t1": "India", "t2": "Pakistan",
+                "score": f"{random.randint(145, 155)}/4", "overs": "17.2",
+                "b1": 1.44, "l1": 1.46, "b2": 2.80, "l2": 2.85,
+                "fancy_ques": "India 20 Over Runs", "fancy_yes": 182, "fancy_no": 184
+            }
+        ]
+    }
 
 @app.post("/place-bet")
 def place_bet(bet: BetRequest):
     if bet.amount > user_data["balance"]:
-        raise HTTPException(status_code=400, detail="Paisa kam hai!")
+        raise HTTPException(status_code=400, detail="Balance kam hai!")
     
-    # Randomly jeetna ya haarna (Logic)
-    win = random.choice([True, False])
-    
-    # Hum 1.5x odds pakad lete hain generic trial ke liye
-    if win:
-        profit = bet.amount * 0.8 # 80% profit
-        user_data["balance"] += profit
-        return {"message": f"Mubarak ho! Aap ₹{profit} jeet gaye.", "new_balance": user_data["balance"]}
-    else:
-        user_data["balance"] -= bet.amount
-        return {"message": f"Oho! Aap ₹{bet.amount} haar gaye.", "new_balance": user_data["balance"]}
+    user_data["balance"] -= bet.amount
+    bet_id = len(user_data["active_bets"]) + 1
+    user_data["active_bets"].append({
+        "id": bet_id, "selection": bet.selection, 
+        "amt": bet.amount, "odds": bet.odds
+    })
+    return {"message": "Bet Done!", "balance": user_data["balance"]}
+
+@app.post("/cash-out/{bet_id}")
+def cash_out(bet_id: int):
+    for i, b in enumerate(user_data["active_bets"]):
+        if b["id"] == bet_id:
+            # 5% cut karke cashout
+            refund = b["amt"] * 0.95
+            user_data["balance"] += refund
+            user_data["active_bets"].pop(i)
+            return {"message": f"Cashout Success! ₹{refund:.2f} wapas mile"}
+    return {"message": "Error"}
